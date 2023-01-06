@@ -13,7 +13,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 def parse_args():
     """
-    Parse the arguments from the command line. !!!!! Must be first in Main()) !!!!!
+    Parse the arguments from the command line. !!!!! Must be first in Main() in run_experiment.py !!!!!
     """
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter ,description="LOKI (Locally Optimal search after K-step Imitation) is a algorithm for finding the optimal policy for a model")
     parser.add_argument("-n", "--n_iter", type=int, default=1000, help="number of iterations to run the algorithm")
@@ -48,6 +48,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+
 def random_sample_switcher(d=3, Nmax=50):
     """
     Choose a random moment for switching from IL to RL based on a uniform distribution.
@@ -69,6 +70,41 @@ def random_sample_switcher(d=3, Nmax=50):
     switch_iter = np.random.choice(np.arange(Nmin//2, Nmax+1), p=prob_mass)
 
     return switch_iter
+
+
+def mirror_decent(self, expert_policy, ppo_policy, n_iter=1000, verbose=True):
+    """
+    function for doing mirror decent between the expert and ray.rllib ppo agent.
+    
+    Input:
+        expert_policy: the expert policy
+        ppo_policy: the ppo policy
+        n_iter: number of iterations to run the algorithm
+        verbose: print the current iteration and reward
+    
+    Output:
+        best_reward: the best reward found
+        best_policy: the best policy found
+    """
+    for i in range(n_iter):
+        # sample from the expert
+        obs, actions, rewards, dones, infos = expert_policy.sample()
+        # train the ppo policy on the expert data
+        ppo_policy.train(obs, actions, rewards, dones, infos)
+        # sample from the ppo policy
+        obs, actions, rewards, dones, infos = ppo_policy.sample()
+        # train the expert policy on the ppo data
+        expert_policy.train(obs, actions, rewards, dones, infos)
+        # evaluate the ppo policy
+        reward = ppo_policy.evaluate()
+        # save the best policy
+        if reward > self.best_reward:
+            self.best_reward = reward
+            self.best_policy = ppo_policy
+        # print the current iteration and reward
+        if verbose:
+            print(f"iteration: {i}, reward: {reward}")
+    return self.best_reward, self.best_policy
     
 
 # Classes
@@ -113,7 +149,7 @@ class LOKI:
             self.model.find_imitation_gradient(policy, expert_policy)
             # Perform Mirrored Descent and update the policy
             self.model.mirrored_descent(policy)
-            
+
             # Evaluate the policy
             reward = self.model.evaluate_policy(policy)
             # Update the best policy
