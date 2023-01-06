@@ -147,7 +147,7 @@ def initiate_PPO_CfC(self, args):
         "num_envs_per_worker": 4,
         "create_env_on_driver": True,
         "lambda": 0.95,
-        "kl_coeff": 0.5,
+        "kl_coeff": 0.5, # Robin: Has to be changed to var as it changes between IL and RL
         "clip_rewards": True,
         "clip_param": 0.1,
         "vf_clip_param": 10.0,
@@ -169,6 +169,8 @@ def initiate_PPO_CfC(self, args):
     }
 
     algo = PPO(config=config)
+
+    return algo
 
     
 
@@ -294,35 +296,6 @@ def build_ilgain(mode, pi, expert, ilrew, ac_scale, ratio):
     return gain
 
 
-def compute_max_kl(mode, ilrate):
-    # Hard code the KL constraints for IL and RL.
-    rl_max_kl = 0.01
-    il_max_kl = 0.1
-    if np.isclose(ilrate, 1.0):
-        max_kl = il_max_kl
-    elif np.isclose(ilrate, 0.0):
-        max_kl = rl_max_kl
-    else:
-        raise ValueError(f'Unknow max_kl, mode: {mode}, ilrate: {ilrate}')
-    return max_kl
-
-
-def compute_ilrate(mode, ilrate_multi, iters, ilrate_decay=None, hard_switch_iter=None):
-    if mode == 'pretrain_il':
-        ilrate = 1.0
-    elif hard_switch_iter is not None:
-        # Hard switch
-        if iters < hard_switch_iter:
-            ilrate = 1.0
-        else:
-            ilrate = 0.0
-    elif ilrate_decay is not None:
-        # Mixing
-        ilrate = ilrate_multi * ilrate_decay ** iters  # exponential
-    else:
-        ilrate = ilrate_multi
-    return ilrate
-
 
 def add_vtarg_and_adv(mode, seg, gamma, lam, truncated_horizon):
     # last element is only used for last vtarg, but we already zeroed it if last new = 1
@@ -371,11 +344,10 @@ def learn(env, policy_fn, *,
           vf_iters=3,
           max_timesteps=0, max_episodes=0, max_iters=0,  # time constraint
           mode="train_expert", policy_save_freq=50, expert_dir=None, expert_file_prefix='policy',
-          ilrate_multi=0.0, ilrate_decay=1.0, hard_switch_iter=None, truncated_horizon=None,
+          hard_switch_iter=None, truncated_horizon=None,
           save_no_policy=False, pretrain_dir=None, pretrain_file_prefix='policy', il_gae=False,
           callback=None,
           deterministic_expert=False,
-          initialize_with_expert_logstd=False
           ):
 
     nworkers = MPI.COMM_WORLD.Get_size()
@@ -511,11 +483,6 @@ def learn(env, policy_fn, *,
                 logstd = tf.get_variable(name="logstd")
         r0print('Expert logstd: {}'.format(expert_logstd), True)
 
-        # Only do this for dagger cost to min KL
-        if (not mode == 'lols' and not mode == 'thor') or initialize_with_expert_logstd:
-            tf.assign(logstd, expert_logstd).eval()
-            r0print('Assign expert logstd to pi', True)
-            assign_old_eq_new()
 
     if pretrain_dir:
         r0print('Initialize learner with pretrained model: {}'.format(pretrain_path), True)
@@ -593,9 +560,6 @@ def learn(env, policy_fn, *,
         add_ilrew(mode, seg, expert, gamma, lam, truncated_horizon, il_gae)
 
         ob_val, ac, atarg, tdlamret, ilrew = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"], seg["ilrew"]
-        ilrate_val = compute_ilrate(mode, ilrate_multi, iters_so_far, ilrate_decay, hard_switch_iter)
-        max_kl = compute_max_kl(mode, ilrate_val)
-        r0print('max_kl: {}'.format(max_kl), True)
         vpredbefore = seg["vpred"]  # predicted value function before udpate
         if not np.allclose(atarg.std(), 0.0):
             atarg = (atarg - atarg.mean()) / atarg.std()  # standardized advantage function estimate
@@ -634,7 +598,7 @@ def learn(env, policy_fn, *,
                              cg_iters=cg_iters, verbose=rank == 0)
             assert np.isfinite(stepdir).all()  # interesting assert
             shs = .5*stepdir.dot(fisher_vector_product(stepdir))
-            lm = np.sqrt(shs / max_kl)
+            lm = np.sqrt(shs / max_kl) # Robin: max_kl is moved to LOKI.py, must find new way of importing it. TODO: Only used here, rewrite lm. 
             fullstep = stepdir / lm
             expectedimprove = g.dot(fullstep)
             surrbefore = lossbefore[0]
