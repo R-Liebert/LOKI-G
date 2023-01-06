@@ -126,6 +126,26 @@ def mirror_decent(self, expert_policy, ppo_policy, n_iter=1000, verbose=True):
             print(f"iteration: {i}, reward: {reward}")
     return self.best_reward, self.best_policy
 
+def evaluate_policy(self, policy, n_iter=1000, verbose=True):
+    """
+    Evaluate the policy.
+    
+    Input:
+        policy: the policy to be evaluated
+        n_iter: number of iterations to run the algorithm
+        verbose: print the current iteration and reward
+        
+    Output:
+        reward: the reward of the policy
+    """
+    reward = 0
+    for i in range(n_iter):
+        obs, actions, rewards, dones, infos = policy.sample()
+        reward += np.sum(rewards)
+        if verbose:
+            print(f"iteration: {i}, reward: {reward}")
+    return reward
+
     
 
 # Classes
@@ -176,7 +196,7 @@ class LOKI:
             best_mirror_reward, best_policy = self.model.mirror_decent(expert_policy, policy)
 
             # Evaluate the policy
-            reward = self.model.evaluate_policy(best_policy)
+            reward = self.evaluate_policy(best_policy)
             # Update the best policy
             if reward > self.best_reward:
                 self.best_reward = reward
