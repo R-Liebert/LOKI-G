@@ -24,13 +24,7 @@ import math
 
 ########################################
 
-# Stuff to do in main script
 
-########
-
-# from ray.rllib.models import ModelCatalog
-
-# ModelCatalog.register_custom_model("cfc", ConvCfCModel)
 
 # Our Imports
 from ray.rllib.models.modelv2 import ModelV2
@@ -173,6 +167,36 @@ def initiate_PPO_CfC(self, args):
     return algo
 
     
+# Make predictions on samples
+def make_predictions(self, samples, algo, args):
+    # Get the policy
+    policy = algo.get_policy()
+
+    # Get the model
+    model = policy.model()
+
+    # Get the observation
+    obs = samples["obs"]
+
+    # Get the sequence length
+    seq_len = samples["seq_len"]
+
+    # Get the initial state
+    state = model.get_initial_state()
+
+    # Get the logits
+    logits, _, _ = model.forward_rnn(obs, state, seq_len)
+
+    # Get the action
+    action = tf.argmax(logits, axis=-1)
+
+    # Get the value
+    value = model.value_function()
+
+
+
+    return value
+
 
 
 
@@ -553,9 +577,7 @@ def learn(env, policy_fn, *,
                             expert_seg = next(expert_seg_gen)
                             ac_scale_val = np.std(expert_seg["ac"], axis=0)
                         ac_scale_val = MPI.COMM_WORLD.bcast(ac_scale_val, root=0)
-        print('ac scale: {}'.format(ac_scale_val))
-        if mode == 'lols' or mode == 'thor':
-            add_expert_v(expert, seg)
+        print(f'ac scale: {ac_scale_val}')
         add_vtarg_and_adv(mode, seg, gamma, lam, truncated_horizon)
         add_ilrew(mode, seg, expert, gamma, lam, truncated_horizon, il_gae)
 
