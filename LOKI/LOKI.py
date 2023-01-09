@@ -80,7 +80,7 @@ def KL_divergence(p, q):
     Calculate the KL divergence between two policies.
     
     Input:
-        p: policy 1
+        p: policy 1 
         q: policy 2
         
     Output:
