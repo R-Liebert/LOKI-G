@@ -202,7 +202,7 @@ def make_predictions(self, samples, algo, args):
 
 ##########################################################
 
-# Not our stuff
+# Not our stuff and not from openai/baselines
 
 ###########################################################
 
@@ -243,6 +243,12 @@ def create_saver(pi, for_expert=False):
     return saver
 
 
+#############################################################
+
+# From openai/baselines
+
+#############################################################
+
 def traj_segment_generator(pi, env, horizon, stochastic):
     # Initialize state variables
     t = 0
@@ -267,7 +273,7 @@ def traj_segment_generator(pi, env, horizon, stochastic):
 
     while True:
         prevac = ac
-        ac, vpred = pi.act(stochastic, ob)
+        ac, vpred = pi.act(stochastic, ob)    # In baseline this line is: pi.step(ob, stochastic=stochastic)
         # Slight weirdness here because we need value function at time T
         # before returning segment [0, T-1] so we get the correct
         # terminal value
@@ -276,10 +282,10 @@ def traj_segment_generator(pi, env, horizon, stochastic):
         if t > 0 and t % horizon == 0:
             yield {"ob": obs, "rew": rews, "vpred": vpreds, "new": news,
                    "ac": acs, "prevac": prevacs, "nextvpred": vpred * (1 - new),
-                   "ep_rets": ep_rets, "ep_lens": ep_lens, "nextob": ob, "nextnew": new}
+                   "ep_rets": ep_rets, "ep_lens": ep_lens, "nextob": ob, "nextnew": new} # "nextob": ob, "nextnew": new is not in baselines
             # Note that env is not reset after the policy and value function is updated.
             # Not sure why action is based on prevoius policy, but the value function is based on the new one.
-            _, vpred = pi.act(stochastic, ob)
+            _, vpred = pi.act(stochastic, ob)  # In baseline this line is: pi.step(ob, stochastic=stochastic)
             # Be careful!!! if you change the downstream algorithm to aggregate
             # several of these batches, then be sure to do a deepcopy
             ep_rets = []
@@ -304,7 +310,11 @@ def traj_segment_generator(pi, env, horizon, stochastic):
             ob = env.reset()
         t += 1
 
+##################################################################
 
+# This is not from openai/baselines
+
+##################################################################
 def build_ilgain(mode, pi, expert, ilrew, ac_scale, ratio):
     """Dagger gain. ilrew can be used here. reduced_mean does not make sense here."""
     coeff_var = 0.0  # the coeff_var in dagger cost
@@ -319,8 +329,12 @@ def build_ilgain(mode, pi, expert, ilrew, ac_scale, ratio):
         gain = tf.constant(0.0)
     return gain
 
+##################################################################
 
+# This is from openai/baselines, but modified. Mode and truncated_horizon are added.
+# is added.
 
+##################################################################
 def add_vtarg_and_adv(mode, seg, gamma, lam, truncated_horizon):
     # last element is only used for last vtarg, but we already zeroed it if last new = 1
     new = np.append(seg["new"], 0)
@@ -330,6 +344,7 @@ def add_vtarg_and_adv(mode, seg, gamma, lam, truncated_horizon):
     rew = seg["rew"]
     lastgaelam = 0
 
+    # Mode selction is not from baselines.
     if mode == "pretrain_il":
         print("pretrain with TD(0)")
         seg["tdlamret"] = rew + gamma * vpred[1:]
@@ -342,7 +357,11 @@ def add_vtarg_and_adv(mode, seg, gamma, lam, truncated_horizon):
         seg["tdlamret"] = seg["adv"] + seg["vpred"]
         print("GAE v estimation")
 
+##################################################################
 
+# This is not openai/baselines.
+
+##################################################################
 def add_expert_v(expert, seg):
     expert_v = batch_value_prediction(expert, seg["ob"])
     expert_v = np.append(expert_v, expert.act(True, seg["nextob"])[1])
@@ -358,6 +377,11 @@ def add_ilrew(mode, seg, expert, gamma, lam, truncated_horizon=None, il_gae=Fals
     seg["ilrew"] = ilrew
 
 
+##################################################################
+
+# This is from openai/baselines, but modified several ways for args.
+
+##################################################################
 def learn(env, policy_fn, *,
           timesteps_per_batch,  # what to train on
           cg_iters,
@@ -376,14 +400,17 @@ def learn(env, policy_fn, *,
 
     nworkers = MPI.COMM_WORLD.Get_size()
     rank = MPI.COMM_WORLD.Get_rank()
-    grad_batch_size = 64
-    pretrain_rollouts_file = 'pretrain_rollouts.npz'
+    grad_batch_size = 64 # Different 
+    pretrain_rollouts_file = 'pretrain_rollouts.npz' # Different
 
+    # In baselines there is a policy = build_policy because no policy_fn is passed in. And set seeds
+
+# different
     if hard_switch_iter is not None:
         # Since it can be randomly generated, in order to have consensus among workers
         hard_switch_iter = MPI.COMM_WORLD.bcast(hard_switch_iter, root=0)
 
-    # Print with color for te rank 0 process.
+    # Print with color for te rank 0 process. Not from baselines.
     def r0print(msg, with_color=False):
         if rank == 0:
             if with_color:
@@ -392,17 +419,17 @@ def learn(env, policy_fn, *,
                 print(msg)
 
     np.set_printoptions(precision=3)
-    policy_files_prefix = 'policy'
-    policy_dir = logger.get_dir()
-    r0print('The policies will be saved to: {}'.format(policy_dir), True)
+    policy_files_prefix = 'policy' # Different
+    policy_dir = logger.get_dir() # Different
+    r0print('The policies will be saved to: {}'.format(policy_dir), True) # Different
     # Setup losses and stuff
     # ----------------------------------------
     # Building blocks
     ob_space = env.observation_space
     ac_space = env.action_space
-    pi = policy_fn("pi", ob_space, ac_space)  # mlp_policy
+    pi = policy_fn("pi", ob_space, ac_space)  # mlp_policy. So this is different but the same ish as baselines
     oldpi = policy_fn("oldpi", ob_space, ac_space)
-    # Create expert policy model if necessary.
+    # Create expert policy model if necessary. Different from baselines until next whitespace
     if expert_dir:
         assert osp.isdir(expert_dir)
     expert = None if not expert_dir else policy_fn("expert", ob_space, ac_space)
@@ -416,10 +443,11 @@ def learn(env, policy_fn, *,
     atarg = tf.placeholder(dtype=tf.float32, shape=[None])  # Target advantage function (if applicable)
     ret = tf.placeholder(dtype=tf.float32, shape=[None])  # Empirical return
     # created in MlpPolicy init, 2d tensor
-    ob = U.get_placeholder_cached(name="ob")
+    ob = U.get_placeholder_cached(name="ob") # different
 
     # arg [None] is prepend_shape, so ac is a 2d tensor
     ac = pi.pdtype.sample_placeholder([None])
+    # different until next whitespace
     ac_scale = tf.placeholder(dtype=tf.float32, shape=[ac.shape[1]])
     ilrew_ph = tf.placeholder(dtype=tf.float32, shape=[None])  # imitation learning reward, maybe needed for ilgain
     ilrate = tf.placeholder(dtype=tf.float32, shape=[])  # a float scalar
@@ -436,28 +464,28 @@ def learn(env, policy_fn, *,
     set_from_flat = U.SetFromFlat(var_list)
 
     # Build up.
-    # Value function objective.
+    # Value function objective. Modified from baselines.
     vferr = tf.reduce_mean(tf.square(pi.vpred - ret))
 
     # Policy gradient objective.
-    ent = pi.pd.entropy()
+    ent = pi.pd.entropy() 
     meanent = tf.reduce_mean(ent)
     entbonus = entcoeff * meanent
     ratio = tf.exp(pi.pd.logp(ac) - oldpi.pd.logp(ac))  # advantage * pnew / pold
-    rlgain = tf.reduce_mean(ratio * atarg)
-    ilgain = build_ilgain(mode, pi, expert, ilrew_ph, ac_scale, ratio)
-    surrgain = ilgain * ilrate + (1 - ilrate) * rlgain
+    rlgain = tf.reduce_mean(ratio * atarg) # This is the surrgain in baseline
+    ilgain = build_ilgain(mode, pi, expert, ilrew_ph, ac_scale, ratio) # Different
+    surrgain = ilgain * ilrate + (1 - ilrate) * rlgain # Different
     optimgain = surrgain + entbonus
     kloldnew = oldpi.pd.kl(pi.pd)
     meankl = tf.reduce_mean(kloldnew)
     losses = [optimgain, meankl, entbonus, ilgain, rlgain, surrgain, meanent]
     loss_names = ["optimgain", "meankl", "entloss", "ilgain", "rlgain", "surrgain", "entropy"]
-    compute_losses = U.function(phs, losses)
-    compute_lossandgrad = U.function(phs, losses + [U.flatgrad(optimgain, var_list)])
+    compute_losses = U.function(phs, losses) # Different
+    compute_lossandgrad = U.function(phs, losses + [U.flatgrad(optimgain, var_list)]) # Different
 
-    # KL constraint.
+    # KL constraint. Some stuff is removed
     dist = meankl
-    klgrads = tf.gradients(dist, var_list)
+    klgrads = tf.gradients(dist, var_list) 
     flat_tangent = tf.placeholder(dtype=tf.float32, shape=[None], name="flat_tan")
     shapes = [var.get_shape().as_list() for var in var_list]
     start = 0
@@ -468,6 +496,7 @@ def learn(env, policy_fn, *,
         start += sz
     gvp = tf.add_n([tf.reduce_sum(g*tangent) for (g, tangent) in zipsame(klgrads, tangents)])  # pylint: disable=E1111
     fvp = U.flatgrad(gvp, var_list)
+    # Different
     compute_fvp = U.function([flat_tangent] + [ob, ac], fvp)  # not sure why atarg and ilrew are needed
     # in spite of the name, only grad is computed
     # ret will be fed by tdlamret, which is adv + vpred, and
@@ -494,7 +523,7 @@ def learn(env, policy_fn, *,
         return out
 
     U.initialize()
-    # Restore expert and/or initialize learner.
+    # Restore expert and/or initialize learner. This is different from baselines.
     if expert_dir:
         r0print('Retoring expert: {}'.format(expert_path), True)
         expert_saver.restore(tf.get_default_session(), expert_path)
@@ -508,7 +537,7 @@ def learn(env, policy_fn, *,
         r0print('Expert logstd: {}'.format(expert_logstd), True)
 
 
-    if pretrain_dir:
+    if pretrain_dir: # Different
         r0print('Initialize learner with pretrained model: {}'.format(pretrain_path), True)
         policy_saver.restore(tf.get_default_session(), pretrain_path)
         assign_old_eq_new()
@@ -523,8 +552,9 @@ def learn(env, policy_fn, *,
     vfadam.sync()
     print("Init param sum", th_init.sum(), flush=True)
 
-    # Prepare for rollouts
+    # Prepare for rollouts 
     # ----------------------------------------
+    # All mode stuff are different
     if mode == "pretrain_il":
         assert expert
         seg_gen = traj_segment_generator(expert, env, timesteps_per_batch,
@@ -540,7 +570,8 @@ def learn(env, policy_fn, *,
     lenbuffer = deque(maxlen=40)  # rolling buffer for episode lengths
     rewbuffer = deque(maxlen=40)  # rolling buffer for episode rewards
 
-    assert sum([max_iters > 0, max_timesteps > 0, max_episodes > 0]) >= 1
+    # Missing some stuff
+    assert sum([max_iters > 0, max_timesteps > 0, max_episodes > 0]) >= 1 
 
     while True:
         if callback:
@@ -554,6 +585,7 @@ def learn(env, policy_fn, *,
         logger.log("********** Iteration %i ************" % iters_so_far)
 
         with timed("sampling"):
+            # Still mode not in baselines and there is new stuff until next whitespace. I guess this is the main difference.
             if mode == "pretrain_il":
                 # assert rank == 0  # only one worker! Not sure why now....
                 if iters_so_far == 0:
@@ -581,8 +613,9 @@ def learn(env, policy_fn, *,
         add_vtarg_and_adv(mode, seg, gamma, lam, truncated_horizon)
         add_ilrew(mode, seg, expert, gamma, lam, truncated_horizon, il_gae)
 
-        ob_val, ac, atarg, tdlamret, ilrew = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"], seg["ilrew"]
+        ob_val, ac, atarg, tdlamret, ilrew = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"], seg["ilrew"] # ilrew is new
         vpredbefore = seg["vpred"]  # predicted value function before udpate
+        # differences until hasattr
         if not np.allclose(atarg.std(), 0.0):
             atarg = (atarg - atarg.mean()) / atarg.std()  # standardized advantage function estimate
         else:
@@ -678,7 +711,7 @@ def learn(env, policy_fn, *,
         logger.record_tabular("TimestepsSoFar", timesteps_so_far)
         logger.record_tabular("TimeElapsed", time.time() - tstart)
         logger.record_tabular("ilrate", ilrate_val)
-        if rank == 0:
+        if rank == 0: # different 
             logger.dump_tabular()
             if iters_so_far % policy_save_freq == 0 and not save_no_policy:
                 prefix = '{}_{}'.format(policy_files_prefix, iters_so_far)
@@ -690,7 +723,7 @@ def learn(env, policy_fn, *,
                     logstd = tf.get_variable(name="logstd")
                     print(logstd.eval())
 
-    if rank == 0 and not save_no_policy:
+    if rank == 0 and not save_no_policy: # different
         r0print('Saving the final policy', True)
         save_path = policy_saver.save(tf.get_default_session(), osp.join(policy_dir, policy_files_prefix + '.ckpt'))
         r0print('Final policy has been saved to: {}'.format(save_path))
