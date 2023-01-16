@@ -226,36 +226,20 @@ class LOKI:
             best_policy: the best policy found
         """
         # Initial values for variables for IL
-        max_kl = 0.1
+        IL_MAX_KL= 0.1
 
-        for i in range(n_iter):
-            # Executing the model on the environment and returning the data
-            obs, actions, rewards, dones, infos = model.sample()
+        self.best_policy = trpo_mpi.learn(policy_fn, env, max_kl=IL_MAX_KL, cg_iters=10, cg_damping=0.1, total_timesteps=args.num_timesteps,
+                   gamma=0.99, lam=0.98, ent_coef=0.0, seed=None, vf_iters=5, vf_stepsize=1e-3,
+                   timesteps_per_batch=args.timesteps_per_batch, max_iters=args.max_iters,
+                   max_episodes=0, policy_save_freq=args.policy_save_freq,
+                   expert_dir=expert_dir,
+                   ilrate_multi=args.ilrate_multi, ilrate_decay=args.ilrate_decay,
+                   hard_switch_iter=hard_switch_iter,
+                   truncated_horizon=args.truncated_horizon,
+                   save_no_policy=args.save_no_policy,
+                   pretrain_dir=pretrain_dir,
+                   il_gae=args.il_gae,
+                   initialize_with_expert_logstd=args.initialize_with_expert_logstd)
 
-            # Sample a policy
-            policy = self.model.sample_policy()
-            # Find imitation gradient
-            self.model.find_imitation_gradient(policy, expert_policy)
-            # Perform Mirrored Descent and update the policy
-            best_mirror_reward, best_policy = self.model.mirror_decent(expert_policy, policy)
-
-            # Evaluate the policy
-            reward = self.evaluate_policy(best_policy)
-            # Update the best policy
-            if reward > self.best_reward:
-                self.best_reward = reward
-                self.best_policy = policy
-            # Update the number of samples
-            self.N += 1
-            # Print the current iteration and reward
-            if verbose:
-                print(f"Iteration: {i}, Reward: {reward}")
-            # Check if we should switch from IL to RL
-            if self.N == self.K:
-                # Switch to RL values for variables
-                max_kl = 0.01
-
-                self.model.switch_to_rl()
-                print("Switching to RL")
         return self.best_policy
     
