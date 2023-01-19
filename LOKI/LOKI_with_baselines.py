@@ -31,19 +31,16 @@ def parse_args():
     parser.add_argument('--policy_save_freq', default=50, type=int,
                         help='learner policy will be saved per these iterations')
     parser.add_argument('--expert_dir', type=str, help='the directory of the expert policy to be loaded')
-    parser.add_argument('--expert_file_prefix', type=str, help='the prefix for the policy checkpoint', default='policy')
     parser.add_argument('--pretrain_dir', type=str, help='the directory of a pretrained policy for learner initialization')
-    parser.add_argument('--pretrain_file_prefix', type=str, help='the prefix for the policy checkpoint', default='policy')
     parser.add_argument('--save_no_policy', action='store_true',
                         help='whether the learner policies will be saved')
     parser.add_argument('--ilrate_multi', type=float, default=0.0,
                         help='the multiplier of il objective [online_il, batch_il]')
     parser.add_argument('--ilrate_decay', default=1.0, type=float, help='the decay of il objective [online_il, batch_il]')
-    parser.add_argument('--hard_switch_iter', type=int, help='switch from il to rl at this iteration [online_il, batch_il]')
+    parser.add_argument('--hard_switch_iter', type=int, default=50, help='switch from il to rl at this iteration [online_il, batch_il]')
     parser.add_argument('--random_sample_switch_iter', action='store_true',
                         help='random sample the iteration to switch from il to rl, with a distribution parameterized by ' +
                         '--hard_switch_iter')
-    parser.add_argument('--truncated_horizon', type=int, help='horizon [thor]')
     parser.add_argument('--deterministic_expert', action='store_true',
                         help='whether to use deterministic expert for BC')
     parser.add_argument('--il_gae', action='store_true')
@@ -112,78 +109,6 @@ def random_sample_switcher(d=3, Nmax=50):
 
     return switch_iter
 
-# Calculate KL divergence between two policies
-
-def KL_divergence(p, q):
-    """
-    Calculate the KL divergence between two policies.
-    
-    Input:
-        p: policy 1 
-        q: policy 2
-        
-    Output:
-        KL: the KL divergence between p and q
-    """
-    KL = 0
-    for i in range(len(p)):
-        KL += p[i] * np.log(p[i]/q[i])
-    return KL
-
-
-def mirror_decent(self, expert_policy, ppo_policy, n_iter=1000, verbose=True):
-    """
-    function for doing mirror decent between the expert and ray.rllib ppo agent.
-    
-    Input:
-        expert_policy: the expert policy
-        ppo_policy: the ppo policy
-        n_iter: number of iterations to run the algorithm
-        verbose: print the current iteration and reward
-    
-    Output:
-        best_reward: the best reward found
-        best_policy: the best policy found
-    """
-    for i in range(n_iter):
-        # sample from the expert
-        obs, actions, rewards, dones, infos = expert_policy.sample()
-        # train the ppo policy on the expert data
-        ppo_policy.train(obs, actions, rewards, dones, infos)
-        # sample from the ppo policy
-        obs, actions, rewards, dones, infos = ppo_policy.sample()
-        # train the expert policy on the ppo data
-        expert_policy.train(obs, actions, rewards, dones, infos)
-        # evaluate the ppo policy
-        reward = ppo_policy.evaluate()
-        # save the best policy  
-        if reward > self.best_reward:
-            self.best_reward = reward
-            self.best_policy = ppo_policy
-        # print the current iteration and reward
-        if verbose:
-            print(f"iteration: {i}, reward: {reward}")
-    return self.best_reward, self.best_policy
-
-def evaluate_policy(self, policy, n_iter=1000, verbose=True):
-    """
-    Evaluate the policy.
-    
-    Input:
-        policy: the policy to be evaluated
-        n_iter: number of iterations to run the algorithm
-        verbose: print the current iteration and reward
-        
-    Output:
-        reward: the reward of the policy
-    """
-    reward = 0
-    for i in range(n_iter):
-        obs, actions, rewards, dones, infos = policy.sample()
-        reward += np.sum(rewards)
-        if verbose:
-            print(f"iteration: {i}, reward: {reward}")
-    return reward
 
     
 
@@ -209,14 +134,17 @@ class LOKI:
         self.N = 0
         self.best_reward = -np.inf
         self.best_policy = None
+        self.env = ABB.RobotEnv() # Or something
+        self.hard_switch_iter = args.hard_switch_iter
+        self.adv_fn = None
 
 
-    def perform_IL(self, model, expert, n_iter=1000, verbose=True):
+    def perform_IL(self, policy_fn, value_fn, expert=None, n_iter=1000, verbose=True):
         """
         Run the LOKI algorithms for imitation learning.
 
         Input:
-            model: the model to be used for the algorithm
+            policy_fn: the policy function to be used
             expert: the expert policy
             n_iter: number of iterations to run the algorithm
             verbose: print the current iteration and reward
@@ -228,14 +156,43 @@ class LOKI:
         # Initial values for variables for IL
         IL_MAX_KL= 0.1
 
-        self.best_policy = trpo_mpi.learn(policy_fn, env, max_kl=IL_MAX_KL, cg_iters=10, cg_damping=0.1, total_timesteps=args.num_timesteps,
+        self.best_policy, self.adv_fn = trpo_mpi.learn(policy_fn, value_fn, self.env, cg_iters=10, cg_damping=0.1, total_timesteps=args.num_timesteps,
+                   gamma=0.99, lam=0.98, ent_coef=0.0, seed=None, vf_iters=5, vf_stepsize=1e-3,
+                   timesteps_per_batch=args.timesteps_per_batch, max_iters=args.max_iters,
+                   max_episodes=0, policy_save_freq=args.policy_save_freq,
+                   expert_dir=expert_dir,
+                   ilrate_multi=args.ilrate_multi, ilrate_decay=args.ilrate_decay,
+                   hard_switch_iter=args.hard_switch_iter,
+                   save_no_policy=args.save_no_policy,
+                   pretrain_dir=pretrain_dir,
+                   il_gae=args.il_gae,
+                   initialize_with_expert_logstd=args.initialize_with_expert_logstd)
+
+
+    def perform_RL(self, policy_fn, value_fn, expert=None, n_iter=1000, verbose=True):
+        """
+        Run the LOKI algorithms for imitation learning.
+
+        Input:
+            policy_fn: the policy function to be used
+            expert: the expert policy
+            n_iter: number of iterations to run the algorithm
+            verbose: print the current iteration and reward
+
+        Output:
+            best_reward: the best reward found
+            best_policy: the best policy found
+        """
+        # Initial values for variables for RL
+        RL_MAX_KL= 0.01
+
+        self.best_policy = trpo_mpi.learn(policy_fn, value_fn, self.env, cg_iters=10, cg_damping=0.1, total_timesteps=args.num_timesteps,
                    gamma=0.99, lam=0.98, ent_coef=0.0, seed=None, vf_iters=5, vf_stepsize=1e-3,
                    timesteps_per_batch=args.timesteps_per_batch, max_iters=args.max_iters,
                    max_episodes=0, policy_save_freq=args.policy_save_freq,
                    expert_dir=expert_dir,
                    ilrate_multi=args.ilrate_multi, ilrate_decay=args.ilrate_decay,
                    hard_switch_iter=hard_switch_iter,
-                   truncated_horizon=args.truncated_horizon,
                    save_no_policy=args.save_no_policy,
                    pretrain_dir=pretrain_dir,
                    il_gae=args.il_gae,
