@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
-import sys, gym
+import sys
+import gym
+import numpy as np
 
 #
 # Test yourself as a learning agent! Pass environment name as a command-line argument.
@@ -19,6 +21,7 @@ SKIP_CONTROL = 0    # Use previous control decision SKIP_CONTROL times, that's h
 human_agent_action = 0
 human_wants_restart = False
 human_sets_pause = False
+horizon = 10e10 # 10e10 is a very large number, just put a large number here
 
 def key_press(key, mod):
     global human_agent_action, human_wants_restart, human_sets_pause
@@ -40,9 +43,21 @@ env.unwrapped.viewer.window.on_key_press = key_press
 env.unwrapped.viewer.window.on_key_release = key_release
 
 def rollout(env):
-    global human_agent_action, human_wants_restart, human_sets_pause
+    global human_agent_action, human_wants_restart, human_sets_pause, horizon
     human_wants_restart = False
-    obser = env.reset()
+    
+    t = 0
+    ac = env.action_space.sample()
+    rew = 0.0
+    ob = env.reset()
+
+    # Initialize history arrays
+    obs = np.array([ob for _ in range(horizon)])
+    rews = np.zeros(horizon, 'float32')
+    vpreds = np.zeros(horizon, 'float32')
+    # Indicates whether this sample is the first of a new episode / rollout.
+    news = np.zeros(horizon, 'int32')
+    acs = np.array([ac for _ in range(horizon)])
     skip = 0
     for t in range(ROLLOUT_TIME):
         if not skip:
@@ -52,7 +67,7 @@ def rollout(env):
         else:
             skip -= 1
 
-        obser, r, done, info = env.step(a)
+        obs, r, done, info = env.step(a)
         env.render()
         if done: break
         if human_wants_restart: break

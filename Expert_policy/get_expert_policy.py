@@ -2,6 +2,7 @@ import gym
 import pygame
 import time
 import sys
+import numpy as np
 
 env = gym.make('ALE/Breakout-v5', render_mode="human" if len(sys.argv)<2 else sys.argv[1])
 env.reset()
@@ -50,19 +51,45 @@ def wait_for_key():
 def rollout(env):
     done = False
     skip = 0
-    global human_agent_action, human_wants_restart, human_sets_pause
+    global human_agent_action, human_wants_restart, human_sets_pause, horizon
+    
+    t = 0
+    ac = env.action_space.sample()
+    new = True
+    rew = 0.0
+    ob = env.reset()
 
+    cur_ep_ret = 0
+    cur_ep_len = 0
+    ep_rets = []
+    ep_lens = []
+
+    # Initialize history arrays
+    obs = np.array([ob for _ in range(horizon)])
+    rews = np.zeros(horizon, 'float32')
+    vpreds = np.zeros(horizon, 'float32')
+    # Indicates whether this sample is the first of a new episode / rollout.
+    news = np.zeros(horizon, 'int32')
+    acs = np.array([ac for _ in range(horizon)])
+    prevacs = acs.copy()
+    
     # A way to get actions from the keyboard
     while not done:
         if not skip:
             wait_for_key()
             print(f'human_agent_action: ', human_agent_action)
-            a = human_agent_action
+            ac = human_agent_action
             skip = SKIP_CONTROL
         else:
             skip -= 1
-    
-        obs, reward, done, truncated, info = env.step(a)
+        
+        obs, rews, done, truncated, info = env.step(ac)
+        ####  
+
+        # Here we need to store the data needed for LOKI from performing the action
+
+        ##########
+
         #env.render()
         if done: break
         if human_wants_restart: break
@@ -71,7 +98,7 @@ def rollout(env):
             time.sleep(0.1)
 
     if done:
-        return
+        return obs, rew, done, truncated, info
         env.reset()
 
 
