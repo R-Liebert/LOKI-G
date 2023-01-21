@@ -53,7 +53,7 @@ def rollout(env):
     global human_agent_action, human_wants_restart, human_sets_pause
 
     # A way to get actions from the keyboard
-    for i in range(ROLLOUT_TIME):
+    while not done:
         if not skip:
             wait_for_key()
             print(f'human_agent_action: ', human_agent_action)
@@ -71,6 +71,7 @@ def rollout(env):
             time.sleep(0.1)
 
     if done:
+        return
         env.reset()
 
 
