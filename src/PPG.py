@@ -1,4 +1,10 @@
-    
+#!/usr/bin/env python
+
+""" 
+This scripts originates from the following repo: https://github.com/wisnunugroho21/reinforcement_learning_phasic_policy_gradient/blob/master/discrete/tensorflow/ppg_dis_tf.py
+But has been adapted to be a Single Network PPG that uses a Closed-form Continous-time Neural Network. The model is not initiated in this script, but loaded from saved_model.
+"""
+
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.keras.optimizers import Adam
@@ -424,7 +430,7 @@ def plot(datas):
     print('Min :', np.min(datas))
     print('Avg :', np.mean(datas))
 
-def run_PPG(model, env, epochs=10, render=False):
+def run_PPG(env, epochs=10, render=False):
     ############## Hyperparameters ##############
     load_weights        = False # If you want to load the agent, set this to True, (Temp done in the code)
     save_weights        = True # If you want to save the agent, set this to True
@@ -451,7 +457,12 @@ def run_PPG(model, env, epochs=10, render=False):
     lam                 = 0.7 # Just set to 0.95
     learning_rate       = 0.0001 # Same as BC
     ############################################# 
-
+    try:
+        model           = tf.keras.models.load_model("../saved_models/sub_optimal_expert.keras")
+        print("Model loaded")
+    except:
+        print("No nodel found")
+        
     agent               = Agent(model, training_mode, policy_kl_range, policy_params, value_clip, entropy_coef, vf_loss_coef,
                             batchsize, n_update, PPO_epochs, gamma, lam, learning_rate)  
 
