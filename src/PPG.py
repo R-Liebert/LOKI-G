@@ -531,7 +531,8 @@ def run_PPG(env, epochs=10, render=False):
 
     print('========== Final ==========')
     # Plot the reward, times for every episode
-
+    model.save("../saved_models/expert_model.keras")
+    
     for reward in batch_rewards:
         rewards.append(reward)
 
@@ -540,4 +541,5 @@ def run_PPG(env, epochs=10, render=False):
 
     plot(rewards)
     plot(times)
+    print('Model saved as expert_model.keras')
     return agent.policy
