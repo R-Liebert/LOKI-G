@@ -1,5 +1,11 @@
+#!/usr/bin/env python3
+
+""" 
+Script is adapted from Mathias Lechner's ncps example (https://github.com/mlech26l/ncps/blob/master/examples/atari_tf.py) under apache license v2.0.
+"""
+
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, BatchNormalization, ReLU, Flatten, Dense, TimeDistributed, Reshape, MaxPool2D
+from tensorflow.keras.layers import Conv2D, BatchNormalization, ReLU, Flatten, Dense, TimeDistributed
 from tensorflow.keras.activations import softmax
 from ncps.tf import CfC
 from ncps.wirings import AutoNCP
