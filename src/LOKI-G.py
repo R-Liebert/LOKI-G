@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import numpy as np
 import argparse
 from importlib.machinery import SourceFileLoader
@@ -9,9 +11,9 @@ from PPG import run_PPG
 # Setting up args
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env_file", type=str, default="env.py",
-                        help="Path to the environment file")
-    parser.add_argument("--demonstration_path", type=str, default="./data", 
+    #parser.add_argument("--env_file", type=str, default="env.py",
+    #                    help="Path to the environment file")
+    parser.add_argument("--demonstration_path", type=str, default="../data", 
                         help="Directory containing the demonstration data. Default is './data'.")
     parser.add_argument("--num_outputs", default=6, type=int, 
                         help="Number of actions the model can output. Default is 6.")
@@ -34,11 +36,6 @@ def main():
     # Parse command line arguments
     args=get_args()
 
-    # Create model
-    num_outputs = args.num_outputs
-    model = ConvCfC(num_outputs)
-
-    # Load the environment from the specified file
     env = SourceFileLoader("env", args.env_file).load_module()
 
     # If random_sample_switch_iter is true, randomly select an iteration to switch from IL to RL
@@ -54,25 +51,20 @@ def main():
     else:
         K = args.hard_switch_iter
 
-    # Perform imitation learning
-    try:
-        trained_model = train_BC(K=K, model=model, data_path=args.demonstration_path, epochs=args.il_epochs)
-        print("IL done")
-    except:
-        print("Failed to do IL")
-        exit()
+    # Perform imitation learning. There is a known issue with the model not training properly due to an InvalidArgumentError. Hence the loop.
+    model_trained = False
+    while model_trained == False:
+        model_trained = train_BC(K=K, num_outputs=args.num_outputs, data_path=args.demonstration_path, epochs=args.il_epochs)
+    
+    print("IL done")
     
     # Perform reinforcement learning
     try:
-        expert_model = run_PPG(model=trained_model, env=env, epochs=args.rl_epochs, render=args.render)
+        run_PPG(env=env, epochs=args.rl_epochs, render=args.render)
         print("RL done")
     except:
         print("Failed to do RL")
         exit()
-
-    # Save the trained model
-    expert_model.save("../saved_models/expert_model", save_format="tf")
-    print("Model saved as expert_model")
 
 if __name__ == "__main__":
     main()
