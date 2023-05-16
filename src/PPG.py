@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """ 
 This scripts originates from the following repo: https://github.com/wisnunugroho21/reinforcement_learning_phasic_policy_gradient/blob/master/discrete/tensorflow/ppg_dis_tf.py
