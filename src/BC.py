@@ -1,26 +1,17 @@
-# Copyright 2022 Mathias Lechner
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+#!/usr/bin/env python3
+""" 
+Script is adapted from Mathias Lechner's ncps example (https://github.com/mlech26l/ncps/blob/master/examples/atari_tf.py) under apache license v2.0.
+"""
 
 from pathlib import Path
 from tensorflow.keras.optimizers import Adam
 import random
 import tensorflow as tf
-
-from CfCmodels import ConvCfC
 import numpy as np
 import os
 import pandas as pd
+
+from CfCmodels import ConvCfC
 
 class BCDataset:
     def __init__(self, dir="../data"):
@@ -126,7 +117,7 @@ class BCDataset:
 
 
 
-def train_BC(K, data_path, model, epochs=10):
+def train_BC(K, data_path, num_outputs, epochs=10):
     """
     Trains a behavior cloning model on a subset of expert data.
 
@@ -140,45 +131,49 @@ def train_BC(K, data_path, model, epochs=10):
         The trained behavior cloning model.
 
     """
-
+    
+    model = ConvCfC(num_outputs)
 
     train_data = BCDataset(data_path)
     train_data = train_data.batch_dataset(K=K)
 
     # Set up checkpointing
-    checkpoint_path = "../saved_models/trained_model.ckpt"
+    checkpoint_path = "../saved_models/BC"
+    checkpoint_path = os.path.join(checkpoint_path, "cp.ckpt")
     checkpoint_dir = os.path.dirname(checkpoint_path)
-    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_dir,
                                                  save_weights_only=True,
                                                  save_freq="epoch",
                                                  verbose=1)
     early_stop = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3)
 
     # Compile and build the model
-    model.compile(
-        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        optimizer=Adam(0.001),
-        metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
-        callbacks=[early_stop, cp_callback]
-    )
+    try:
+        model.compile(
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+            optimizer=Adam(0.0001),
+            metrics=[tf.keras.metrics.SparseCategoricalAccuracy()]
+        )
+    except:
+        print("InvalidArgumentError")
+
     model.build((None, None, 240, 320, 3))
     model.summary()
     
-    # Uncomment to load weights from checkpoint 
-    #model.load_weights('./BC_breakout/cp.ckpt')
-    
-
     # Train the model
-    model.fit(
-        train_data,
-        epochs=epochs,
-        callbacks=cp_callback
-    )
+    try:
+        model.fit(
+            train_data,
+            epochs=epochs,
+            callbacks=[cp_callback, early_stop]
+        )
 
-    model.save_weights(checkpoint_path)
+        # Save the entire model as a SavedModel.
+        model.save("../saved_models/sub_optimal_expert.keras")
 
-    
-    # Save the entire model as a SavedModel.
-    model.save("../saved_models/sub_optimal_expert", save_format="tf")
+        # Save the weights
+        model.save_weights("../saved_models/BC")
+    except:
+        print("InvalidArgumentError in fit")
+        return False
 
-    return model
