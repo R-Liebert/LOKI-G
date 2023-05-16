@@ -51,7 +51,7 @@ def main():
     else:
         K = args.hard_switch_iter
 
-    # Perform imitation learning. There is a known issue with the model not training properly due to an InvalidArgumentError. Hence the loop.
+    # Perform imitation learning. There is a known issue with the model not training properly due to an InvalidArgumentError during initial run. Hence the loop.
     model_trained = False
     while model_trained == False:
         model_trained = train_BC(K=K, num_outputs=args.num_outputs, data_path=args.demonstration_path, epochs=args.il_epochs)
