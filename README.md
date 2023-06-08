@@ -36,4 +36,4 @@ The trained model is saved in the `saved_models` directory located one level abo
 This project is licensed under the terms of the MIT License.
 
 ## Contact
-For any queries, please contact [our contact info].
+For any queries, please contact Robin Liebert [robinliebert@onmail.com] or Yuriy Yurchenko [yurchenkoyuriy97@gmail.com].
