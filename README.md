@@ -18,9 +18,10 @@ First, adjust the parameters as needed in the `run_LOKI-G.sh` file. Then, you ca
 ```bash
 bash run_LOKI-G.sh
 ```
+By default, the script is configured to run with a simulated environment, so it can be run without any special hardware.
 
 ## Arguments
-- `--env_file`: Path to the Python file that defines the environment. **This file must be updated to reflect the specific hardware being used and the task being performed**.
+- `--env_file`: Path to the Python file that defines the environment. By default, this is set to `src/env_files/simulated_env.py`, which runs a simple simulated environment. If you have a physical robot, you can switch to the robot environment by changing this path to `src/env_files/robot_env.py`. You may need to modify the `robot_env.py` file to match your hardware configuration.
 - `--demonstration_path`: Directory containing the demonstration data (default: "./data").
 - `--num_outputs`: Number of actions the model can output (default: 6).
 - `--hard_switch_iter`: Iteration to switch from IL to RL during training (default: 18).
